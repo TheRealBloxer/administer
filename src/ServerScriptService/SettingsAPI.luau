@@ -169,7 +169,7 @@ end
 
 function SettingsAPI.new(description: {[string]: any}): Settings
 	local settingGroup = {}::Settings
-	settingGroup.Name = tassert(description.Name, "Name", "string")
+	settingGroup.Name = tassert(description, "Name", "string")
 	settingGroup.Groups = {}
 	
 	function settingGroup.GetCategory(
@@ -185,3 +185,5 @@ function SettingsAPI.new(description: {[string]: any}): Settings
 	parseSettings(settingGroup.Groups, tassert(settingGroup.Groups, "Groups", "table"))
 	return settingGroup
 end
+
+return SettingsAPI

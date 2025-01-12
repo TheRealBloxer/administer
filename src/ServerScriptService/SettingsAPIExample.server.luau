@@ -1,4 +1,4 @@
-local SettingsAPI = require(script.Parent.Loader.Core.Settings)
+local SettingsAPI = require(script.Parent.SettingsAPI)
 
 local Settings = SettingsAPI.new({
 	-- if you use an array here rather than keys, luau will sort it in the order of definition.
