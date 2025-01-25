@@ -8,8 +8,9 @@ local Settings = SettingsAPI.new({
 	},
 	
 	["General"] = {
-		["DisplayName"] = "General",
-		["Color"] = "#fff",
+		["Name"] = "General",
+		["Color"] = Color3.new(0.5, 0.5, 0.5),
+		["SortOrder"] = 1,
 		["Description"] = "Configure general settings.",
 		
 		["AnimationSpeed"] = {
@@ -37,6 +38,11 @@ local Settings = SettingsAPI.new({
 	},
 	
 	["Interface"] = {
+		["Name"] = "Interface",
+		["Color"] = Color3.new(0.5, 0, 0.5),
+		["SortOrder"] = 2,
+		["Description"] = "Configure interface settings.",
+
 		["_CategoryOpts"] = {
 			["DisplayName"] = "Interface options",
 			["Color"] = "#000",

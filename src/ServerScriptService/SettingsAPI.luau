@@ -2,6 +2,8 @@
 -- Part of Administer
 -- metatablecat 2024
 
+local Signal = require(script.Parent.signal)
+
 local SettingsAPI = {}
 
 export type EnumPair = {
@@ -11,7 +13,7 @@ export type EnumPair = {
 
 type Connection = {Disconnect: (Connection) -> ()}
 
-type Setting = {
+type Setting = { -- **the actual settings theirselves
 	Name: string,
 	DisplayName: string,
 	Description: string,
@@ -19,7 +21,7 @@ type Setting = {
 	EditorType: string, -- not type enforcing this so i dont have to keep changing this
 	Save: (Setting) -> (),
 	Group: SettingsGroup
-} & ({
+} & ({ -- **different types of settings, depends on what is initially set
 	Type: "boolean",
 	DefaultValue: boolean,
 	Value: boolean
@@ -54,7 +56,7 @@ type Setting = {
 
 type ValidOutTypes = boolean|string|EnumPair|number
 
-export type SettingsGroup = {
+export type SettingsGroup = { -- **individual setting groups (ex. "general" or "interface" settings)
 	Name: string,
 	DisplayName: string,
 	Description: string,
@@ -72,7 +74,7 @@ export type SettingsGroup = {
 }
 
 -- todo: use generics when the typing engine isn't as anoying about recursive generics
-export type Settings = {
+export type Settings = { -- **all settings
 	Name: string,
 	Groups: {[string]: SettingsGroup},
 	GetCategory: (string) -> {[string]: Setting},
@@ -85,7 +87,7 @@ export type Settings = {
 ]]
 
 -- TODO: move this to a seperate module, putting it here for now
-local function tassert<T>(v: T, name: string, expType: string, optional: true?): T
+local function tassert<T>(v: T, name: string, expType: string, optional: true?): T --**checks if the value (v) provided == the expectedType (expType)
 	if optional and not v then return v end
 	
 	local t = typeof(v)
@@ -108,25 +110,26 @@ local function keyToSettings(self: SettingsGroup, keys: string|{string}): {[stri
 	return capturedSettings
 end
 
-local function settingGroup(settingConfig)
+local function settingGroup(settingConfig) -- **this creates setting groups to be used
 	local group = {}
-	group.Name = tassert(settingConfig.Name, "Name", "string")
+	print(settingConfig.Name)
+	group.Name = tassert(settingConfig.Name, "Name", "string") -- error causing. check groups
 	group.DisplayName = tassert(settingConfig.DisplayName, "DisplayName", "string", true) or group.Name
 	group.Description = tassert(settingConfig.Description, "Description", "string", true) or ""
 	group.Color = tassert(settingConfig.Color, "Color", "Color3", true) or Color3.new(1,1,1) -- TODO: maybe a different color here?
 	group.SortOrder = tassert(settingConfig.Sortorder, "SortOrder", "number", true) or 0
 	group.Settings = {}
+
+	group.Changed = Signal.new()
+
+	--	self: SettingsGroup,
+	--	key: string|{string},
+	--	fn: (Setting) -> ()
+	--): Connection
+		--error("NotImplementedException") -- we need a signaller before implementing this this
+	--end
 	
-	function group.Changed(
-		self: SettingsGroup,
-		key: string|{string},
-		fn: (Setting) -> ()
-	): Connection
-		error("NotImplementedException") -- we need a signaller before implementing this this
-	end
-	
-	function group.With(
-		self: SettingsGroup,
+	function group.With(self: SettingsGroup,
 		keys: string|{string},
 		fn: (Setting, number) -> ()
 	): (number?) -> ()
@@ -159,6 +162,18 @@ local function settingGroup(settingConfig)
 		writeValueRaw(self, key, value)
 		-- signal dispatcher here :)
 	end
+
+	local proxy = setmetatable({}, {
+		__index = group,
+		__newindex = function(_, key: string, value: any)
+			print(key)
+			group[key] = value
+			group.Changed:Fire()
+		end
+	})
+
+	proxy.S = "Hello"
+	proxy.Color = Color3.new(0.5, 0.5, 0.5)
 end
 
 local function parseSettings(out: {[string]: SettingsGroup}, settingGroups)
@@ -167,23 +182,24 @@ local function parseSettings(out: {[string]: SettingsGroup}, settingGroups)
 	end
 end
 
-function SettingsAPI.new(description: {[string]: any}): Settings
-	local settingGroup = {}::Settings
-	settingGroup.Name = tassert(description, "Name", "string")
-	settingGroup.Groups = {}
+function SettingsAPI.new(description: {[string]: any}): Settings -- **this starts the entire settings api
+	local _settingsAPI = {}::Settings -- TODO: change naming?
+	_settingsAPI.Name = tassert(description, "Name", "table") --**check if description == string
+	_settingsAPI.Groups = {}
+
+	for k, group in description do
+		_settingsAPI.Groups[k] = group
+	end
 	
-	function settingGroup.GetCategory(
-		self: Settings,
-		categoryName: string
-	): {[string]: Setting}
+	function _settingsAPI.GetCategory(self: Settings, categoryName: string): {[string]: Setting}
 		local group = self.Groups[categoryName]
 		if not group then error(`group {categoryName} is not a settings group of {self.Name}`) end
 		
 		return group.Settings
 	end
 	
-	parseSettings(settingGroup.Groups, tassert(settingGroup.Groups, "Groups", "table"))
-	return settingGroup
+	parseSettings(_settingsAPI.Groups, tassert(_settingsAPI.Groups, "Groups", "table"))
+	return _settingsAPI
 end
 
 return SettingsAPI
