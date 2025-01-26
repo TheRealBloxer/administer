@@ -2,21 +2,9 @@
     "name": "Administer",
     "tree": {
         "$className": "Folder",
-        "Resources": {
-            "$className": "Folder",
-            "AdministerMainPanel": {
-                "$className": "ScreenGui",
-                "$path": "src/Client",
-                "roblox_packages": {
-                    "$path": "roblox_packages"
-                }
-            }
-        },
-        "Loader": {
-            "$path": "src/Server",
-            "roblox_packages": {
-                "$path": "roblox_packages"
-            }
+        "$path": "src/ServerScriptService",
+        "roblox_packages": {
+            "$path": "roblox_packages"
         }
     }
 }
