@@ -121,6 +121,9 @@ local function settingGroup(settingConfig) -- **this creates setting groups to b
 	group.Settings = {}
 
 	group.Changed = Signal.new()
+	group.Changed:Connect(function()
+		
+	end)
 
 	--	self: SettingsGroup,
 	--	key: string|{string},
@@ -186,6 +189,8 @@ function SettingsAPI.new(description: {[string]: any}): Settings -- **this start
 	local _settingsAPI = {}::Settings -- TODO: change naming?
 	_settingsAPI.Name = tassert(description, "Name", "table") --**check if description == string
 	_settingsAPI.Groups = {}
+	_settingsAPI.Changed = {}
+	_settingsAPI.Signals = {} -- TODO: create a signal for each setting
 
 	for k, group in description do
 		_settingsAPI.Groups[k] = group
@@ -197,7 +202,20 @@ function SettingsAPI.new(description: {[string]: any}): Settings -- **this start
 		
 		return group.Settings
 	end
-	
+
+	function _settingsAPI.Changed:Connect<T>(setting: string | {string},  fn: (T...) -> ()): Connection
+		if not _settingsAPI[setting] then
+			_settingsAPI[setting] = Signal.new()
+		end
+		
+		return _settingsAPI[setting]:Connect(fn)
+	end
+
+	local b
+	b = _settingsAPI.Changed:Connect("AnimationSpeed", function()
+		
+	end)
+
 	parseSettings(_settingsAPI.Groups, tassert(_settingsAPI.Groups, "Groups", "table"))
 	return _settingsAPI
 end
