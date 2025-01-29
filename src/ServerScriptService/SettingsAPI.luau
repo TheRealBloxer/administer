@@ -20,6 +20,7 @@ type Setting = { -- **the actual settings theirselves
 	SortOrder: number,
 	EditorType: string, -- not type enforcing this so i dont have to keep changing this
 	Save: (Setting) -> (),
+	Signal: Signal.Signal,
 	Group: SettingsGroup
 } & ({ -- **different types of settings, depends on what is initially set
 	Type: "boolean",
@@ -91,34 +92,91 @@ local function tassert<T>(v: T, name: string, expType: string, optional: true?):
 	if optional and not v then return v end
 	
 	local t = typeof(v)
-	if t ~= expType then
+	if t ~= expType and not optional then
 		error(`property {name} expects {expType}, got {t}`)
+	elseif t ~= expType then -- TODO: updated by MMM, is this correct functionality?
+		return nil
 	end
+
 	return v
 end
 
-local function keyToSettings(self: SettingsGroup, keys: string|{string}): {[string]: Setting}
-	if type(keys) == "string" then keys = {string} end
+local function keyToSettings(self: SettingsGroup, keys: string|{string}): {[string]: Setting} --** finds settings in settingsgroup based on keys (names) provided
+	if type(keys) == "string" then keys = {string} end -- **put in table to prevent errors since this is iterating through
 	local capturedSettings: {[string]: Setting} = { }
 
 	for _, key in keys::{string} do
-		local setting = self.Settings[key]
-		if not setting then error(`setting {key} is not a member of {self.Name}`) end
+		local setting = self.Settings[key] 
+		if not setting then error(`setting {key} is not a member of {self.Name}`) end -- **if key is not in settings then throw error
 		capturedSettings[setting.Name]=setting
 	end
 
 	return capturedSettings
 end
 
+local function createSettingSignal(self: Setting)
+	self.Signal = Signal.new() -- **need to add into type
+end
+
+local function setting(settingConfig, key, group: SettingsGroup)
+	local setting: Setting = {}
+
+	setting.Name = tassert(key, "Name", "string") -- TODO: remove optional types in a lot of places?
+	setting.DisplayName = tassert(settingConfig.DisplayName, "DisplayName", "string", true)
+	setting.Description = tassert(settingConfig.Description, "Description", "string", true)
+	setting.Sortorder = tassert(settingConfig.SortOrder, "SortOrder", "number", true)
+	setting.EditorType = tassert(settingConfig.EditorType, "EditorType", "string", true) -- not type enforced?
+
+	setting.Group = group
+	setting.Type = settingConfig.Type
+
+	setting.DefaultValue = tassert(
+		settingConfig.DefaultValue,
+		"Default Value",
+		if setting.Type == "int" or setting.Type == "float" then
+			"number"
+		else
+			setting.Type,
+		true
+	)
+
+	setting.Value = setting.DefaultValue
+
+	function setting.Save(self: Setting)
+		writeValueRaw(self, key, value)
+		-- signal dispatcher here :)?
+	end
+
+	local proxy = setmetatable({}, {
+		__index = group,
+		__newindex = function(_, key: string, value: any)
+			setting[key] = value
+			setting.Signal:Fire(setting, key, value)
+		end
+	})
+
+	return proxy
+end
+
+local function parseSettings(out: SettingsGroup, settingsList)
+	for k, set in settingsList do
+		out[k] = setting(set, k, out)
+	end
+end
+
 local function settingGroup(settingConfig) -- **this creates setting groups to be used
-	local group = {}
-	print(settingConfig.Name)
-	group.Name = tassert(settingConfig.Name, "Name", "string") -- error causing. check groups
+	local group: SettingsGroup = {}
+
+	group.Name = tassert(settingConfig.Name, "Name", "string")
 	group.DisplayName = tassert(settingConfig.DisplayName, "DisplayName", "string", true) or group.Name
 	group.Description = tassert(settingConfig.Description, "Description", "string", true) or ""
 	group.Color = tassert(settingConfig.Color, "Color", "Color3", true) or Color3.new(1,1,1) -- TODO: maybe a different color here?
 	group.SortOrder = tassert(settingConfig.Sortorder, "SortOrder", "number", true) or 0
 	group.Settings = {}
+
+	for k, setting in settingConfig do -- **puts settings for group into group.settings
+		group.Settings[k] = tassert(setting, "Setting", "table", true)
+	end
 
 	group.Changed = Signal.new()
 	group.Changed:Connect(function()
@@ -132,7 +190,7 @@ local function settingGroup(settingConfig) -- **this creates setting groups to b
 		--error("NotImplementedException") -- we need a signaller before implementing this this
 	--end
 	
-	function group.With(self: SettingsGroup,
+	function group.With(self: SettingsGroup, -- **??
 		keys: string|{string},
 		fn: (Setting, number) -> ()
 	): (number?) -> ()
@@ -148,7 +206,7 @@ local function settingGroup(settingConfig) -- **this creates setting groups to b
 		end
 	end
 	
-	function group.Get(
+	function group.Get( -- **returns settings (table) based on setting names
 		self: SettingsGroup,
 		keys: string|{string}
 	)
@@ -157,7 +215,7 @@ local function settingGroup(settingConfig) -- **this creates setting groups to b
 		return if isString then capturedSettings[keys] else capturedSettings
 	end
 	
-	function group.Save(
+	function group.Save( -- **saves settings
 		self: SettingsGroup,
 		key: string,
 		value: ValidOutTypes
@@ -169,17 +227,17 @@ local function settingGroup(settingConfig) -- **this creates setting groups to b
 	local proxy = setmetatable({}, {
 		__index = group,
 		__newindex = function(_, key: string, value: any)
-			print(key)
 			group[key] = value
 			group.Changed:Fire()
 		end
 	})
 
-	proxy.S = "Hello"
-	proxy.Color = Color3.new(0.5, 0.5, 0.5)
+	parseSettings(group.Settings, tassert(group.Settings, "Settings", "table"))
+
+	return proxy
 end
 
-local function parseSettings(out: {[string]: SettingsGroup}, settingGroups)
+local function parseSettingGroups(out: {[string]: SettingsGroup}, settingGroups)
 	for k, group in settingGroups do
 		out[k] = settingGroup(group)
 	end
@@ -193,7 +251,9 @@ function SettingsAPI.new(description: {[string]: any}): Settings -- **this start
 	_settingsAPI.Signals = {} -- TODO: create a signal for each setting
 
 	for k, group in description do
-		_settingsAPI.Groups[k] = group
+		if type(group) == "table" then
+			_settingsAPI.Groups[k] = group
+		end
 	end
 	
 	function _settingsAPI.GetCategory(self: Settings, categoryName: string): {[string]: Setting}
@@ -203,20 +263,30 @@ function SettingsAPI.new(description: {[string]: any}): Settings -- **this start
 		return group.Settings
 	end
 
-	function _settingsAPI.Changed:Connect<T>(setting: string | {string},  fn: (T...) -> ()): Connection
-		if not _settingsAPI[setting] then
-			_settingsAPI[setting] = Signal.new()
+	function _settingsAPI.Changed:Connect<T>(setting: string | {string},  fn: (setting: Setting, T...) -> ()): Connection
+		if not _settingsAPI.Signals[setting] then
+			_settingsAPI.Signals[setting] = Signal.new()
 		end
 		
-		return _settingsAPI[setting]:Connect(fn)
+		return _settingsAPI.Signals[setting]:Connect(fn)
 	end
 
 	local b
-	b = _settingsAPI.Changed:Connect("AnimationSpeed", function()
-		
+
+	parseSettingGroups(_settingsAPI.Groups, tassert(_settingsAPI.Groups, "Groups", "table"))
+
+	for _, group in pairs(_settingsAPI.Groups) do
+		for key, setting in pairs(group.Settings) do
+			_settingsAPI.Signals[key] = Signal.new()
+			setting.Signal = _settingsAPI.Signals[key]
+		end
+	end
+
+	b = _settingsAPI.Changed:Connect("InterfaceScale", function(setting, key: string, value: any)
+		print(`{key} on {setting.Name} has changed and is now {value}!`)
 	end)
 
-	parseSettings(_settingsAPI.Groups, tassert(_settingsAPI.Groups, "Groups", "table"))
+	_settingsAPI.Groups.Interface.Settings.InterfaceScale.Value = 232
 	return _settingsAPI
 end
 
